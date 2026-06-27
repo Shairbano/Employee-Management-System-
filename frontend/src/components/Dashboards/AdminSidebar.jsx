@@ -71,7 +71,8 @@ const AdminSidebar = () => {
               <NavLink to="/admin-dashboard/attendance" className={subLinkClass} end onClick={closeSidebar}>
                 <div className="w-1.5 h-1.5 rounded-full bg-gray-500"></div><span>Mark Attendance</span>
               </NavLink>
-              <NavLink to="/admin-dashboard/attendance-history" className={subLinkClass} onClick={closeSidebar}>
+              {/* FIXED PATH: changed attendance-history to attendance/history */}
+              <NavLink to="/admin-dashboard/attendance/history" className={subLinkClass} onClick={closeSidebar}>
                 <FaHistory className="text-xs" /><span>Attendance History</span>
               </NavLink>
             </div>
@@ -126,7 +127,6 @@ const AdminSidebar = () => {
 
   return (
     <>
-      {/* Hamburger — teal, top-4 */}
       <button
         onClick={() => setIsOpen(true)}
         className="md:hidden fixed top-2 left-2 z-50 bg-teal-600 hover:bg-teal-700 text-white p-2 rounded-lg shadow-lg cursor-pointer transition-colors"

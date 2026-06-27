@@ -4,14 +4,15 @@ import axios from 'axios';
 import { useAuth } from '../../context/authContext';
 import {
     FaPlus, FaFolderOpen, FaUsers, FaClock, FaCheckCircle,
-    FaPauseCircle, FaTimesCircle, FaEye, FaSearch, FaBell
+    FaPauseCircle, FaTimesCircle, FaEye, FaSearch, FaBell, FaLock
 } from 'react-icons/fa';
 
 const STATUS_CONFIG = {
-    'Planning':     { color: 'bg-blue-100 text-blue-700',   icon: <FaClock className="text-xs" /> },
+    'Planning':    { color: 'bg-blue-100 text-blue-700',   icon: <FaClock className="text-xs" /> },
     'In Progress': { color: 'bg-amber-100 text-amber-700', icon: <FaFolderOpen className="text-xs" /> },
-    'On Hold':      { color: 'bg-gray-100 text-gray-600',   icon: <FaPauseCircle className="text-xs" /> },
+    'On Hold':     { color: 'bg-gray-100 text-gray-600',   icon: <FaPauseCircle className="text-xs" /> },
     'Completed':   { color: 'bg-green-100 text-green-700', icon: <FaCheckCircle className="text-xs" /> },
+    'Closed':      { color: 'bg-red-100 text-red-700',     icon: <FaLock className="text-xs" /> },
 };
 
 const API = 'http://localhost:3000/api';
@@ -28,7 +29,6 @@ const ProjectList = () => {
     const fetchData = useCallback(async () => {
         const token = localStorage.getItem('token');
         const headers = { Authorization: `Bearer ${token}` };
-
         try {
             const [projRes, invRes] = await Promise.all([
                 axios.get(`${API}/project`, { headers }),
@@ -45,19 +45,43 @@ const ProjectList = () => {
 
     useEffect(() => { fetchData(); }, [fetchData]);
 
-    const isHead = (p) => p.projectHead?.userId?._id === user?._id ||
-        p.projectHead?.userId === user?._id;
+    const isHead = (p) => {
+        const headUserId = p.projectHead?.userId;
+        if (!headUserId) return false;
+        const headIdStr = typeof headUserId === 'object'
+            ? (headUserId._id?.toString() || headUserId.toString())
+            : headUserId.toString();
+        return headIdStr === user?._id?.toString() || headIdStr === user?.id?.toString();
+    };
+
+    const getMyMemberEntry = (p) => {
+        return p.members?.find(m => {
+            const mUserId = typeof m.userId === 'object'
+                ? (m.userId._id?.toString() || m.userId.toString())
+                : m.userId.toString();
+            return mUserId === user?._id?.toString() || mUserId === user?.id?.toString();
+        });
+    };
 
     const filtered = projects.filter(p => {
-        const matchSearch = p.name.toLowerCase().includes(search.toLowerCase()) ||
+        const matchSearch =
+            p.name.toLowerCase().includes(search.toLowerCase()) ||
             p.description.toLowerCase().includes(search.toLowerCase());
-        
-        // Logical check for filters
+
         let matchStatus = false;
         if (statusFilter === 'All') {
             matchStatus = true;
         } else if (statusFilter === 'As Head') {
             matchStatus = isHead(p);
+        } else if (statusFilter === 'As Member') {
+            const myEntry = getMyMemberEntry(p);
+            matchStatus = !isHead(p) && myEntry?.status === 'Accepted';
+        } else if (statusFilter === 'Accepted') {
+            const myEntry = getMyMemberEntry(p);
+            matchStatus = !isHead(p) && myEntry?.status === 'Accepted';
+        } else if (statusFilter === 'Rejected') {
+            const myEntry = getMyMemberEntry(p);
+            matchStatus = myEntry?.status === 'Rejected';
         } else {
             matchStatus = p.status === statusFilter;
         }
@@ -66,6 +90,16 @@ const ProjectList = () => {
     });
 
     const acceptedMembers = (p) => p.members?.filter(m => m.status === 'Accepted').length || 0;
+
+    const acceptedCount = projects.filter(p => {
+        const myEntry = getMyMemberEntry(p);
+        return !isHead(p) && myEntry?.status === 'Accepted';
+    }).length;
+
+    const rejectedCount = projects.filter(p => {
+        const myEntry = getMyMemberEntry(p);
+        return myEntry?.status === 'Rejected';
+    }).length;
 
     if (loading) return (
         <div className="flex items-center justify-center min-h-screen bg-slate-50">
@@ -128,13 +162,13 @@ const ProjectList = () => {
                                 <p className="text-amber-600 text-xs">Click to view and respond</p>
                             </div>
                         </div>
-                        <span className="text-amber-600 font-bold text-sm">View →</span>
+                        <span className="text-amber-600 font-bold text-sm">View</span>
                     </div>
                 )}
 
-                {/* Filters */}
-                <div className="bg-white rounded-2xl border border-slate-200 p-4 mb-6 flex flex-col sm:flex-row gap-3">
-                    <div className="relative flex-1">
+                {/* Filter Bar */}
+                <div className="bg-white rounded-2xl border border-slate-200 p-4 mb-6 flex flex-col gap-3">
+                    <div className="relative">
                         <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm" />
                         <input
                             type="text"
@@ -144,8 +178,65 @@ const ProjectList = () => {
                             className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm outline-none focus:border-teal-500 transition-colors"
                         />
                     </div>
-                    <div className="flex gap-2 flex-wrap">
-                        {['All', 'Planning', 'In Progress', 'On Hold', 'Completed'].map(s => (
+
+                    <div className="flex flex-wrap gap-2">
+                        {['All', 'As Head', 'As Member'].map(f => (
+                            <button
+                                key={f}
+                                onClick={() => setStatusFilter(f)}
+                                className={`px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                    statusFilter === f
+                                        ? 'bg-teal-600 text-white shadow-md'
+                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                }`}
+                            >
+                                {f}
+                            </button>
+                        ))}
+
+                        <span className="border-l border-slate-200 mx-1"></span>
+
+                        <button
+                            onClick={() => setStatusFilter('Accepted')}
+                            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                                statusFilter === 'Accepted'
+                                    ? 'bg-green-600 text-white shadow-md'
+                                    : 'bg-green-50 text-green-700 hover:bg-green-100'
+                            }`}
+                        >
+                            <FaCheckCircle className="text-[10px]" />
+                            Accepted
+                            {acceptedCount > 0 && (
+                                <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${
+                                    statusFilter === 'Accepted' ? 'bg-white text-green-700' : 'bg-green-200 text-green-800'
+                                }`}>
+                                    {acceptedCount}
+                                </span>
+                            )}
+                        </button>
+
+                        <button
+                            onClick={() => setStatusFilter('Rejected')}
+                            className={`px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                                statusFilter === 'Rejected'
+                                    ? 'bg-red-600 text-white shadow-md'
+                                    : 'bg-red-50 text-red-700 hover:bg-red-100'
+                            }`}
+                        >
+                            <FaTimesCircle className="text-[10px]" />
+                            Rejected
+                            {rejectedCount > 0 && (
+                                <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-full ${
+                                    statusFilter === 'Rejected' ? 'bg-white text-red-700' : 'bg-red-200 text-red-800'
+                                }`}>
+                                    {rejectedCount}
+                                </span>
+                            )}
+                        </button>
+
+                        <span className="border-l border-slate-200 mx-1"></span>
+
+                        {['Planning', 'In Progress', 'On Hold', 'Completed', 'Closed'].map(s => (
                             <button
                                 key={s}
                                 onClick={() => setStatusFilter(s)}
@@ -159,25 +250,6 @@ const ProjectList = () => {
                             </button>
                         ))}
                     </div>
-                </div>
-
-                {/* Stats Row (Clickable Cards) */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-                    {[
-                        { label: 'Total', val: projects.length, filter: 'All', color: 'text-slate-700', bg: 'bg-slate-50', border: 'border-slate-200' },
-                        { label: 'Active', val: projects.filter(p => p.status === 'In Progress').length, filter: 'In Progress', color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-100' },
-                        { label: 'Completed', val: projects.filter(p => p.status === 'Completed').length, filter: 'Completed', color: 'text-green-600', bg: 'bg-green-50', border: 'border-green-100' },
-                        { label: 'As Head', val: projects.filter(p => isHead(p)).length, filter: 'As Head', color: 'text-teal-600', bg: 'bg-teal-50', border: 'border-teal-100' },
-                    ].map((s, i) => (
-                        <div 
-                            key={i} 
-                            onClick={() => setStatusFilter(s.filter)}
-                            className={`${s.bg} ${s.border} rounded-xl p-3 border shadow-sm cursor-pointer transition-all hover:shadow-md active:scale-95 group ${statusFilter === s.filter ? 'ring-2 ring-teal-500 ring-offset-1' : ''}`}
-                        >
-                            <p className="text-[10px] font-black text-slate-400 uppercase mb-1 group-hover:text-slate-600">{s.label}</p>
-                            <p className={`text-2xl font-black ${s.color}`}>{s.val}</p>
-                        </div>
-                    ))}
                 </div>
 
                 {/* Project Grid */}
@@ -200,25 +272,48 @@ const ProjectList = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                         {filtered.map(project => {
                             const statusCfg = STATUS_CONFIG[project.status] || STATUS_CONFIG['Planning'];
-                            const iAmHead = isHead(project);
-                            const accepted = acceptedMembers(project);
+                            const iAmHead   = isHead(project);
+                            const myEntry   = getMyMemberEntry(project);
+                            const accepted  = acceptedMembers(project);
+                            const isClosed  = project.status === 'Closed';
+                            const iRejected = !iAmHead && myEntry?.status === 'Rejected';
 
                             return (
                                 <div key={project._id}
-                                    className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow overflow-hidden group"
+                                    className={`bg-white rounded-2xl border shadow-sm hover:shadow-md transition-shadow overflow-hidden group ${
+                                        isClosed  ? 'border-red-200 opacity-80' :
+                                        iRejected ? 'border-red-200 opacity-70' :
+                                        'border-slate-200'
+                                    }`}
                                 >
-                                    {/* Card Top */}
                                     <div className="p-5 pb-3">
                                         <div className="flex items-start justify-between mb-2">
                                             <div className="flex-1 min-w-0 mr-2">
                                                 <h3 className="font-black text-slate-800 text-base truncate group-hover:text-teal-700 transition-colors">
                                                     {project.name}
                                                 </h3>
-                                                {iAmHead && (
-                                                    <span className="inline-flex items-center gap-1 text-[10px] font-black text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full mt-1">
-                                                         Project Head
-                                                    </span>
-                                                )}
+                                                <div className="flex flex-wrap gap-1 mt-1">
+                                                    {iAmHead && (
+                                                        <span className="inline-flex items-center gap-1 text-[10px] font-black text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full">
+                                                            Project Head
+                                                        </span>
+                                                    )}
+                                                    {!iAmHead && myEntry?.status === 'Accepted' && (
+                                                        <span className="inline-flex items-center gap-1 text-[10px] font-black text-green-700 bg-green-50 px-2 py-0.5 rounded-full">
+                                                            <FaCheckCircle className="text-[8px]" /> Accepted
+                                                        </span>
+                                                    )}
+                                                    {iRejected && (
+                                                        <span className="inline-flex items-center gap-1 text-[10px] font-black text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
+                                                            <FaTimesCircle className="text-[8px]" /> Rejected
+                                                        </span>
+                                                    )}
+                                                    {isClosed && (
+                                                        <span className="inline-flex items-center gap-1 text-[10px] font-black text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
+                                                            <FaLock className="text-[8px]" /> Closed
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </div>
                                             <span className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase ${statusCfg.color} whitespace-nowrap`}>
                                                 {statusCfg.icon} {project.status}
@@ -228,7 +323,6 @@ const ProjectList = () => {
                                             {project.description}
                                         </p>
 
-                                        {/* Technologies */}
                                         {project.technologies?.length > 0 && (
                                             <div className="flex flex-wrap gap-1 mt-3">
                                                 {project.technologies.slice(0, 4).map((t, i) => (
@@ -243,7 +337,6 @@ const ProjectList = () => {
                                         )}
                                     </div>
 
-                                    {/* Card Bottom */}
                                     <div className="px-5 py-3 border-t border-slate-100 flex items-center justify-between">
                                         <div className="flex items-center gap-4 text-xs text-slate-500">
                                             <span className="flex items-center gap-1">

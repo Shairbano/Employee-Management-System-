@@ -92,7 +92,7 @@ const EditDepartment = () => {
                 </form>
             </div>
 
-            {/* Sections & Employees — stack on mobile, side by side on lg+ */}
+            {/* Sections & Employees */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
 
                 {/* Sections Table */}
@@ -135,15 +135,13 @@ const EditDepartment = () => {
                             <thead className="bg-gray-100 text-gray-700">
                                 <tr>
                                     <th className="p-2">Name</th>
-                                    <th className="p-2 hidden sm:table-cell">Role</th>
                                     <th className="p-2">Action</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {employees.length > 0 ? employees.map(emp => (
                                     <tr key={emp._id} className="border-b hover:bg-gray-50">
-                                        <td className="p-2">{emp.userId?.name}</td>
-                                        <td className="p-2 text-gray-500 hidden sm:table-cell">{emp.designation}</td>
+                                        <td className="p-2 font-medium">{emp.userId?.name || "N/A"}</td>
                                         <td className="p-2">
                                             <button
                                                 onClick={() => navigate(`/admin-dashboard/employees/edit/${emp._id}`)}

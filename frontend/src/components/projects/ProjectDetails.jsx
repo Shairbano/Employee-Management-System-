@@ -5,7 +5,7 @@ import { useAuth } from '../../context/authContext';
 import {
     FaUsers, FaUserPlus, FaTrash, FaEdit, FaSave, FaTimes,
     FaSearch, FaClock, FaCheckCircle, FaTimesCircle, FaHourglassHalf,
-    FaCrown, FaCode, FaCalendarAlt, FaArrowLeft, FaFolderOpen, FaUser
+    FaCrown, FaCode, FaCalendarAlt, FaArrowLeft, FaFolderOpen, FaUser, FaLock
 } from 'react-icons/fa';
 
 const API = 'http://localhost:3000/api';
@@ -15,6 +15,7 @@ const STATUS_COLORS = {
     'In Progress': 'bg-amber-100 text-amber-700 border-amber-200',
     'On Hold':     'bg-gray-100 text-gray-600 border-gray-200',
     'Completed':   'bg-green-100 text-green-700 border-green-200',
+    'Closed':      'bg-red-100 text-red-700 border-red-200',
 };
 
 const MEMBER_STATUS_ICON = {
@@ -23,7 +24,6 @@ const MEMBER_STATUS_ICON = {
     'Rejected': <FaTimesCircle className="text-red-500" />,
 };
 
-// ── Reusable avatar: shows profile photo if available, else coloured initial ──
 const Avatar = ({ image, name, size = 'md', bgColor = 'bg-teal-500' }) => {
     const sizes = {
         sm: 'w-8 h-8 text-xs',
@@ -50,12 +50,13 @@ const ProjectDetail = () => {
 
     const [project, setProject] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [isHead, setIsHead] = useState(false);
     const [editing, setEditing] = useState(false);
     const [editForm, setEditForm] = useState({});
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [statusUpdating, setStatusUpdating] = useState(false);
 
-    // Add member state
     const [showAddMember, setShowAddMember] = useState(false);
     const [memberSearch, setMemberSearch] = useState('');
     const [searchResults, setSearchResults] = useState([]);
@@ -91,12 +92,18 @@ const ProjectDetail = () => {
 
     useEffect(() => { fetchProject(); }, [fetchProject]);
 
-    const isHead = project && (
-        project.projectHead?.userId?._id === user?._id ||
-        project.projectHead?.userId === user?._id
-    );
+    // ── Fix: compute isHead only after both project and user are loaded ──
+    useEffect(() => {
+        if (!project || !user) return;
+        const headUserId = project.projectHead?.userId;
+        if (!headUserId) return;
+        const headIdStr = typeof headUserId === 'object'
+            ? (headUserId._id?.toString() || headUserId.toString())
+            : headUserId.toString();
+        const result = headIdStr === user._id?.toString() || headIdStr === user.id?.toString();
+        setIsHead(result);
+    }, [project, user]);
 
-    // Debounced employee search
     useEffect(() => {
         const token = localStorage.getItem('token');
         const headers = { Authorization: `Bearer ${token}` };
@@ -134,11 +141,36 @@ const ProjectDetail = () => {
         }
     };
 
+    const handleQuickStatusChange = async (newStatus) => {
+        const token = localStorage.getItem('token');
+        const headers = { Authorization: `Bearer ${token}` };
+        setError(''); setSuccess('');
+        setStatusUpdating(true);
+        try {
+            const techArr = project.technologies || [];
+            await axios.put(`${API}/project/${id}`, {
+                name: project.name,
+                description: project.description,
+                technologies: techArr,
+                deadline: project.deadline ? project.deadline.split('T')[0] : '',
+                status: newStatus
+            }, { headers });
+            setSuccess('Status updated!');
+            fetchProject();
+            setTimeout(() => setSuccess(''), 3000);
+        } catch (err) {
+            setError(err.response?.data?.error || 'Status update failed');
+        } finally {
+            setStatusUpdating(false);
+        }
+    };
+
     const handleAddMember = async () => {
         if (!selectedEmployee || !memberRole.trim()) return;
         const token = localStorage.getItem('token');
         const headers = { Authorization: `Bearer ${token}` };
         setAddingMember(true);
+        setError('');
         try {
             await axios.post(`${API}/project/${id}/members`, {
                 employeeId: selectedEmployee._id,
@@ -183,6 +215,14 @@ const ProjectDetail = () => {
         }
     };
 
+    const closeAddMemberModal = () => {
+        setShowAddMember(false);
+        setSelectedEmployee(null);
+        setMemberRole('');
+        setMemberSearch('');
+        setSearchResults([]);
+    };
+
     if (loading) return (
         <div className="flex items-center justify-center min-h-screen">
             <div className="w-10 h-10 border-4 border-teal-500 border-t-transparent rounded-full animate-spin"></div>
@@ -196,6 +236,7 @@ const ProjectDetail = () => {
     const accepted = project.members?.filter(m => m.status === 'Accepted') || [];
     const pending  = project.members?.filter(m => m.status === 'Pending')  || [];
     const rejected = project.members?.filter(m => m.status === 'Rejected') || [];
+    const isClosed = project.status === 'Closed';
 
     const inputClass = "w-full border border-slate-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 transition-all bg-slate-50 focus:bg-white";
 
@@ -206,20 +247,20 @@ const ProjectDetail = () => {
                 {/* Alerts */}
                 {error && (
                     <div className="bg-red-50 border-2 border-red-200 text-red-700 rounded-xl p-3 text-sm font-semibold flex items-center justify-between">
-                        <span>⚠ {error}</span>
+                        <span>{error}</span>
                         <button onClick={() => setError('')} className="cursor-pointer"><FaTimes /></button>
                     </div>
                 )}
                 {success && (
                     <div className="bg-green-50 border-2 border-green-200 text-green-700 rounded-xl p-3 text-sm font-semibold flex items-center justify-between">
-                        <span>✓ {success}</span>
+                        <span>{success}</span>
                         <button onClick={() => setSuccess('')} className="cursor-pointer"><FaTimes /></button>
                     </div>
                 )}
 
-                {/* ── PROJECT HEADER ── */}
+                {/* Project Header */}
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                    <div className="bg-linear-to-r from-slate-800 to-slate-700 p-6 sm:p-8">
+                    <div className="bg-gray-800 p-6 sm:p-8">
                         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                             <div className="flex-1">
                                 {!editing ? (
@@ -228,9 +269,17 @@ const ProjectDetail = () => {
                                             <FaFolderOpen className="text-teal-400" />
                                             {project.name}
                                         </h1>
-                                        <span className={`inline-flex items-center gap-1 mt-2 px-3 py-1 rounded-full text-xs font-black border ${STATUS_COLORS[project.status]}`}>
-                                            {project.status}
-                                        </span>
+                                        <div className="flex items-center gap-2 mt-2">
+                                            <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black border ${STATUS_COLORS[project.status] || STATUS_COLORS['Planning']}`}>
+                                                {project.status === 'Closed' && <FaLock className="text-[10px]" />}
+                                                {project.status}
+                                            </span>
+                                            {isClosed && (
+                                                <span className="text-red-300 text-xs font-semibold">
+                                                    This project is closed
+                                                </span>
+                                            )}
+                                        </div>
                                     </>
                                 ) : (
                                     <input
@@ -305,7 +354,7 @@ const ProjectDetail = () => {
                                         <label className="block text-xs font-black text-slate-500 uppercase mb-1">Status</label>
                                         <select className={inputClass} value={editForm.status}
                                             onChange={e => setEditForm({ ...editForm, status: e.target.value })}>
-                                            {['Planning', 'In Progress', 'On Hold', 'Completed'].map(s => (
+                                            {['Planning', 'In Progress', 'On Hold', 'Completed', 'Closed'].map(s => (
                                                 <option key={s}>{s}</option>
                                             ))}
                                         </select>
@@ -338,12 +387,35 @@ const ProjectDetail = () => {
                                         ))}
                                     </div>
                                 )}
+
+                                {/* Quick Status Change */}
+                                {isHead && (
+                                    <div className="mt-6 pt-5 border-t border-slate-100">
+                                        <p className="text-xs font-black text-slate-400 uppercase mb-3">Change Status</p>
+                                        <div className="flex flex-wrap gap-2">
+                                            {['Planning', 'In Progress', 'On Hold', 'Completed', 'Closed'].map(s => (
+                                                <button
+                                                    key={s}
+                                                    disabled={project.status === s || statusUpdating}
+                                                    onClick={() => handleQuickStatusChange(s)}
+                                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                                                        project.status === s
+                                                            ? 'bg-teal-600 text-white border-teal-600'
+                                                            : 'bg-white text-slate-600 border-slate-200 hover:border-teal-400 hover:text-teal-600'
+                                                    }`}
+                                                >
+                                                    {s}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </>
                         )}
                     </div>
                 </div>
 
-                {/* ── MEMBERS SECTION ── */}
+                {/* Members Section */}
                 <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                     <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
                         <h2 className="font-black text-slate-800 flex items-center gap-2">
@@ -352,7 +424,7 @@ const ProjectDetail = () => {
                                 {accepted.length} active
                             </span>
                         </h2>
-                        {isHead && (
+                        {isHead && !isClosed && (
                             <button
                                 onClick={() => setShowAddMember(true)}
                                 className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-sm"
@@ -360,10 +432,15 @@ const ProjectDetail = () => {
                                 <FaUserPlus /> Add Member
                             </button>
                         )}
+                        {isHead && isClosed && (
+                            <span className="flex items-center gap-1.5 text-xs text-red-500 font-semibold bg-red-50 px-3 py-1.5 rounded-xl border border-red-200">
+                                <FaLock /> Project Closed
+                            </span>
+                        )}
                     </div>
 
                     <div className="p-6">
-                        {/* ── Project Head ── */}
+                        {/* Project Head */}
                         <div className="mb-4">
                             <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Project Head</p>
                             <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl p-3">
@@ -378,12 +455,12 @@ const ProjectDetail = () => {
                                     <p className="text-slate-500 text-xs">{project.projectHead?.userId?.email}</p>
                                 </div>
                                 <span className="ml-auto flex items-center gap-1 text-amber-600 text-xs font-black">
-                                    <FaCrown /> Head
+                                    Head
                                 </span>
                             </div>
                         </div>
 
-                        {/* ── Active Members ── */}
+                        {/* Active Members */}
                         {accepted.length > 0 && (
                             <div className="mb-4">
                                 <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Active Members ({accepted.length})</p>
@@ -402,7 +479,7 @@ const ProjectDetail = () => {
                                             </div>
                                             <div className="flex items-center gap-2">
                                                 {MEMBER_STATUS_ICON[m.status]}
-                                                {isHead && (
+                                                {isHead && !isClosed && (
                                                     <button
                                                         onClick={() => handleRemoveMember(m._id)}
                                                         className="text-red-400 hover:text-red-600 cursor-pointer p-1 transition-colors"
@@ -418,7 +495,7 @@ const ProjectDetail = () => {
                             </div>
                         )}
 
-                        {/* ── Pending Members ── */}
+                        {/* Pending Members */}
                         {pending.length > 0 && (
                             <div className="mb-4">
                                 <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Pending Invitations ({pending.length})</p>
@@ -433,11 +510,11 @@ const ProjectDetail = () => {
                                             />
                                             <div className="flex-1 min-w-0">
                                                 <p className="font-bold text-slate-700 text-sm truncate">{m.userId?.name}</p>
-                                                <p className="text-slate-500 text-xs">{m.role} · Awaiting response</p>
+                                                <p className="text-slate-500 text-xs">{m.role} - Awaiting response</p>
                                             </div>
                                             <div className="flex items-center gap-2">
                                                 {MEMBER_STATUS_ICON[m.status]}
-                                                {isHead && (
+                                                {isHead && !isClosed && (
                                                     <button onClick={() => handleRemoveMember(m._id)}
                                                         className="text-red-400 hover:text-red-600 cursor-pointer p-1">
                                                         <FaTrash className="text-xs" />
@@ -450,7 +527,7 @@ const ProjectDetail = () => {
                             </div>
                         )}
 
-                        {/* ── Rejected Members ── */}
+                        {/* Rejected Members */}
                         {rejected.length > 0 && (
                             <div>
                                 <p className="text-[10px] font-black text-slate-400 uppercase mb-2">Declined ({rejected.length})</p>
@@ -481,7 +558,7 @@ const ProjectDetail = () => {
                             <div className="text-center py-8 text-slate-400">
                                 <FaUsers className="text-3xl mx-auto mb-2 opacity-30" />
                                 <p className="text-sm font-semibold">No members yet</p>
-                                {isHead && <p className="text-xs mt-1">Click "Add Member" to invite team members</p>}
+                                {isHead && !isClosed && <p className="text-xs mt-1">Click "Add Member" to invite team members</p>}
                             </div>
                         )}
                     </div>
@@ -493,24 +570,26 @@ const ProjectDetail = () => {
                 </button>
             </div>
 
-            {/* ── Add Member Modal ── */}
+            {/* Add Member Modal */}
             {showAddMember && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => {
-                        setShowAddMember(false); setSelectedEmployee(null); setMemberRole('');
-                        setMemberSearch(''); setSearchResults([]);
-                    }} />
+                    <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={closeAddMemberModal} />
                     <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
                         <div className="bg-teal-600 px-6 py-4 flex items-center justify-between">
                             <h3 className="text-white font-black text-lg flex items-center gap-2">
                                 <FaUserPlus /> Add Team Member
                             </h3>
-                            <button onClick={() => { setShowAddMember(false); setSelectedEmployee(null); setMemberRole(''); setMemberSearch(''); setSearchResults([]); }}
+                            <button onClick={closeAddMemberModal}
                                 className="text-white hover:rotate-90 transition-transform cursor-pointer">
                                 <FaTimes className="text-xl" />
                             </button>
                         </div>
                         <div className="p-6 space-y-4">
+                            {error && (
+                                <div className="bg-red-50 border border-red-200 text-red-600 rounded-xl p-3 text-xs font-semibold">
+                                    {error}
+                                </div>
+                            )}
                             <div>
                                 <label className="block text-xs font-black text-slate-500 uppercase mb-2">Search Employee</label>
                                 <div className="relative">
@@ -535,11 +614,10 @@ const ProjectDetail = () => {
                                                 onClick={() => { setSelectedEmployee(emp); setMemberSearch(emp.userId?.name); setSearchResults([]); }}
                                                 className="w-full flex items-center gap-3 p-3 hover:bg-teal-50 transition-colors text-left border-b border-slate-100 last:border-0 cursor-pointer"
                                             >
-                                                {/* Show real photo in search results too */}
                                                 <Avatar image={emp.image} name={emp.userId?.name} size="sm" bgColor="bg-teal-500" />
                                                 <div className="min-w-0">
                                                     <p className="font-bold text-slate-800 text-sm truncate">{emp.userId?.name}</p>
-                                                    <p className="text-xs text-slate-500 truncate">{emp.department?.dep_name} · {emp.designation?.designation_name}</p>
+                                                    <p className="text-xs text-slate-500 truncate">{emp.department?.dep_name} - {emp.designation?.designation_name}</p>
                                                 </div>
                                             </button>
                                         ))}
@@ -550,7 +628,6 @@ const ProjectDetail = () => {
                                 )}
                             </div>
 
-                            {/* Selected Employee */}
                             {selectedEmployee && (
                                 <div className="bg-teal-50 border-2 border-teal-200 rounded-xl p-3 flex items-center gap-3">
                                     <Avatar image={selectedEmployee.image} name={selectedEmployee.userId?.name} size="md" bgColor="bg-teal-500" />
@@ -566,7 +643,7 @@ const ProjectDetail = () => {
                             )}
 
                             <div>
-                                <label className="block text-xs font-black text-slate-500 uppercase mb-2">Role in Project *</label>
+                                <label className="block text-xs font-black text-slate-500 uppercase mb-2">Role in Project</label>
                                 <input
                                     type="text"
                                     placeholder="e.g. Frontend Developer, UI Designer, QA..."
@@ -577,7 +654,7 @@ const ProjectDetail = () => {
                             </div>
 
                             <div className="flex gap-3 pt-1">
-                                <button onClick={() => { setShowAddMember(false); setSelectedEmployee(null); setMemberRole(''); setMemberSearch(''); setSearchResults([]); }}
+                                <button onClick={closeAddMemberModal}
                                     className="flex-1 border-2 border-slate-200 text-slate-600 py-3 rounded-xl font-bold text-sm cursor-pointer hover:bg-slate-50 transition-all">
                                     Cancel
                                 </button>

@@ -1,4 +1,4 @@
-let User=require("../models/user")// Import user model
+let User=require("./models/user")// Import user model
 let bcrypt=require('bcrypt')// Import bcrypt for password hashing
 require("./config/db")// Import database configuration
  let registerAdmin=async()=>{ // Function to register admin user
@@ -7,7 +7,7 @@ require("./config/db")// Import database configuration
         let hashPassword=await(bcrypt.hash("admin",10))// Hash the password "admin" with salt rounds of 10
         let admin=new User({
             userId:"admin01",
-            name:"Admin",
+            name:"admin",
             email:"admin@gmail.com",
             password:hashPassword,
             role:"admin",

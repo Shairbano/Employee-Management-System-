@@ -178,7 +178,7 @@ const EditDesignation = () => {
                                     {employees.map(emp => (
                                         <div key={emp._id} className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3 border border-gray-100">
                                             <p className="font-semibold text-gray-800 text-sm">{emp.userId?.name}</p>
-                                            <button
+                                                                                       <button
                                                 onClick={() => navigate(`/admin-dashboard/employees/edit/${emp._id}`)}
                                                 className="text-blue-600 hover:underline font-semibold cursor-pointer text-sm"
                                             >

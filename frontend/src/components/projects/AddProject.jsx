@@ -101,6 +101,7 @@ const AddProject = () => {
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
                                     <label className={labelClass}>Status</label>
+                                    {/*  Added Closed option */}
                                     <select
                                         className={inputClass}
                                         value={form.status}
@@ -110,6 +111,7 @@ const AddProject = () => {
                                         <option value="In Progress">In Progress</option>
                                         <option value="On Hold">On Hold</option>
                                         <option value="Completed">Completed</option>
+                                        <option value="Closed">Closed</option>
                                     </select>
                                 </div>
                                 <div>
